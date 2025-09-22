@@ -5,9 +5,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "tsx trendV2.ts",
+    "start": "tsx trendV2.tsx",
     "maker": "tsx maker.ts",
-    "trend": "tsx trendV2.ts",
+    "trend": "tsx trendV2.tsx",
     "test": "vitest run",
     "cli:start": "tsx cli.ts start",
     "cli:log": "tsx cli.ts log",
@@ -24,7 +24,10 @@
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
     "dotenv": "^16.5.0",
+    "ink": "^6.3.1",
+    "ink-table": "^3.1.0",
     "ora": "^8.2.0",
+    "react": "19.1.1",
     "ws": "^8.18.2"
   },
   "devDependencies": {

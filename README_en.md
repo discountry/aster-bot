@@ -57,7 +57,7 @@ pnpm start
 # or
 pnpm trendV2
 # or
-npx tsx trendV2.ts
+npx tsx trendV2.tsx
 ```
 
 > The old trend.ts is still available, but it is recommended to use trendv2.

@@ -59,7 +59,7 @@ pnpm start
 # 或
 pnpm trendV2
 # 或
-npx tsx trendV2.ts
+npx tsx trendV2.tsx
 ```
 
 > 旧版 trend.ts 依然可用，但建议优先体验 trendv2。
@@ -140,4 +140,3 @@ pnpm test
 ## 版权所有
 
 由 [RitMEX](https://ritmex.one) 开发并免费分享。
-

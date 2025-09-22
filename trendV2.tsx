@@ -7,6 +7,11 @@ import {
   AsterAccountSnapshot,
 } from "./exchanges/aster";
 import "dotenv/config";
+import React, { useEffect, useState } from "react";
+import { render, Box, Text } from "ink";
+import type { TextProps } from "ink";
+import Table from "ink-table";
+import { EventEmitter } from "events";
 import {
   TRADE_SYMBOL,
   TRADE_AMOUNT,
@@ -24,7 +29,7 @@ import {
   placeTrailingStopOrder,
   placeMarketOrder
 } from "./utils/order";
-import { logTrade, printStatus, TradeLogItem } from "./utils/log";
+import { logTrade, TradeLogItem } from "./utils/log";
 import { getPosition, getSMA30 } from "./utils/helper";
 
 const aster = new Aster(
@@ -47,6 +52,149 @@ let totalTrades = 0;
 let orderTypeLocks: { [key: string]: boolean } = {};
 let orderTypePendingOrderId: { [key: string]: string | null } = {};
 let orderTypeUnlockTimer: { [key: string]: NodeJS.Timeout | null } = {};
+
+const STATUS_EVENT = "update";
+
+interface StatusPayload {
+  ticker: AsterTicker;
+  ob: AsterDepth;
+  sma: number | null;
+  trend: string;
+  openOrder: { side: "BUY" | "SELL"; price: number; amount: number } | null;
+  closeOrder: { side: "BUY" | "SELL"; price: number; amount: number } | null;
+  stopOrder: { side: "BUY" | "SELL"; stopPrice: number } | null;
+  pos: { positionAmt: number; entryPrice: number; unrealizedProfit: number };
+  pnl: number;
+  unrealized: number;
+  tradeLog: TradeLogItem[];
+  totalProfit: number;
+  totalTrades: number;
+  openOrders: AsterOrder[];
+}
+
+const statusEmitter = new EventEmitter();
+
+const TrendApp = () => {
+  const [status, setStatus] = useState<StatusPayload | null>(null);
+
+  useEffect(() => {
+    const handler = (payload: StatusPayload) => setStatus(payload);
+    statusEmitter.on(STATUS_EVENT, handler as (...args: any[]) => void);
+    return () => {
+      statusEmitter.off(STATUS_EVENT, handler as (...args: any[]) => void);
+    };
+  }, []);
+
+  if (!status) {
+    return (
+      <Box flexDirection="column">
+        <Text color="cyanBright">趋势策略机器人</Text>
+        <Text color="gray">正在加载行情与账户数据...</Text>
+        <Text color="gray">按 Ctrl+C 退出</Text>
+      </Box>
+    );
+  }
+
+  const hasPosition = Math.abs(status.pos.positionAmt) > 0.00001;
+  const direction = status.pos.positionAmt > 0 ? "多" : "空";
+  const openOrdersRows = status.openOrders.map((order) => ({
+    id: order.orderId,
+    side: order.side,
+    type: order.type,
+    price: order.price,
+    qty: order.origQty,
+    filled: order.executedQty,
+    status: order.status
+  }));
+  const recentLogs = status.tradeLog.slice(-10);
+  const logColors: Record<string, TextProps["color"]> = {
+    open: "green",
+    close: "blue",
+    stop: "red",
+    order: "yellow",
+    error: "redBright"
+  };
+
+  return (
+    <Box flexDirection="column">
+      <Box marginBottom={1} flexDirection="column">
+        <Text color="cyanBright" bold>
+          趋势策略机器人
+        </Text>
+        <Text color="yellow">
+          最新价格: {status.ticker?.lastPrice ?? "-"} | SMA30: {status.sma !== null ? status.sma.toFixed(2) : "-"}
+        </Text>
+        <Text color="green">
+          盘口 买一: {status.ob?.bids?.[0]?.[0] ?? "-"} 卖一: {status.ob?.asks?.[0]?.[0] ?? "-"}
+        </Text>
+        <Text color="magenta">当前趋势: {status.trend}</Text>
+      </Box>
+
+      {status.openOrder && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="blue">当前开仓挂单: {status.openOrder.side} @ {status.openOrder.price} 数量: {status.openOrder.amount}</Text>
+        </Box>
+      )}
+      {status.closeOrder && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="blueBright">当前平仓挂单: {status.closeOrder.side} @ {status.closeOrder.price} 数量: {status.closeOrder.amount}</Text>
+        </Box>
+      )}
+      {status.stopOrder && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="red">止损单: {status.stopOrder.side} STOP_MARKET @ {status.stopOrder.stopPrice}</Text>
+        </Box>
+      )}
+
+      <Box flexDirection="column" marginBottom={1}>
+        {hasPosition ? (
+          <Text bold>
+            持仓: {direction} 开仓价: {status.pos.entryPrice} 当前浮盈亏: {status.pnl.toFixed(4)} USDT 账户浮盈亏: {status.unrealized.toFixed(4)}
+          </Text>
+        ) : (
+          <Text color="gray">当前无持仓</Text>
+        )}
+      </Box>
+
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold>累计交易次数: {status.totalTrades} 累计收益: {status.totalProfit.toFixed(4)} USDT</Text>
+      </Box>
+
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold>最近交易/挂单记录：</Text>
+        {recentLogs.length > 0 ? (
+          recentLogs.map((log, index) => {
+            const color = logColors[log.type] ?? "white";
+            return (
+              <Text color={color}>
+                [{log.time}] [{log.type}] {log.detail}
+              </Text>
+            );
+          })
+        ) : (
+          <Text color="gray">暂无记录</Text>
+        )}
+      </Box>
+
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold>当前挂单：</Text>
+        {openOrdersRows.length > 0 ? (
+          <Table data={openOrdersRows} />
+        ) : (
+          <Text color="gray">无挂单</Text>
+        )}
+      </Box>
+
+      <Text color="gray">按 Ctrl+C 退出</Text>
+    </Box>
+  );
+};
+
+function updateStatus(payload: StatusPayload) {
+  statusEmitter.emit(STATUS_EVENT, payload);
+}
+
+render(<TrendApp />);
 
 // 订阅所有推送
 aster.watchAccount((data) => {
@@ -221,7 +369,7 @@ async function trendStrategy() {
         continue;
       }
     }
-    printStatus({
+    updateStatus({
       ticker: ticker!,
       ob: ob!,
       sma: lastSMA30,
